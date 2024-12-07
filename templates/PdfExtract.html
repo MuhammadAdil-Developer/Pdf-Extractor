@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiple PDF Upload and Data Display</title>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      background-color: #f9f9f9;
+      margin: 0;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #ffffff;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    h1 {
+      font-size: 2rem;
+      color: #333;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+      text-align: left;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 1rem;
+      color: #333;
+      margin-bottom: 5px;
+    }
+
+    .file-upload {
+      padding: 15px;
+      border: 2px dashed #ccc;
+      border-radius: 5px;
+      background-color: #f4f4f4;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+      text-align: center;
+      font-size: 1rem;
+      color: #666;
+    }
+
+    .file-upload:hover {
+      background-color: #e9e9e9;
+    }
+
+    .data-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-top: 30px;
+    }
+
+    .data-card {
+      background: #f4f4f4;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      text-align: center;
+    }
+
+    .data-card h2 {
+      font-size: 1.2rem;
+      color: #4a90e2;
+      margin: 0;
+      margin-bottom: 10px;
+    }
+
+    .data-card p {
+      font-size: 1rem;
+      color: #555;
+    }
+
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 12px;
+      background-color: #6c63ff;
+      color: #ffffff;
+      font-size: 1.2rem;
+      font-weight: bold;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-top: 20px;
+      transition: background-color 0.3s ease;
+    }
+
+    .btn:hover {
+      background-color: #5549e8;
+    }
+
+    .loader {
+      text-align: center;
+      margin-top: 20px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h1>Upload and Display PDF Data</h1>
+    <form id="uploadForm">
+      <div class="form-group">
+        <label for="pdfFile">Choose PDF files</label>
+        <div class="file-upload" onclick="document.getElementById('pdfFile').click()">
+          Choose PDF files or drag here
+        </div>
+        <input type="file" id="pdfFile" accept="application/pdf" style="display: none;" multiple onchange="previewPDF(event)">
+      </div>
+      <div id="previewContainer" class="pdf-preview" style="display: none;">
+        <p id="fileNames"></p>
+      </div>
+      <button type="submit" class="btn">Submit</button>
+    </form>
+
+    <div id="loader" class="loader">
+      <p>Loading...</p>
+    </div>
+
+    <div id="dataContainer" class="data-container">
+      <!-- Dynamic PDF data will appear here -->
+    </div>
+  </div>
+
+  <script>
+    // Store previously selected files
+    let selectedFiles = [];
+
+    // Handle file preview
+    function previewPDF(event) {
+      const files = event.target.files;
+      const previewContainer = document.getElementById("previewContainer");
+      const fileNames = document.getElementById("fileNames");
+
+      // Add the new files to the selected files array
+      selectedFiles = [...selectedFiles, ...Array.from(files)];
+
+      // Display the names of all selected files
+      const fileNamesList = selectedFiles.map(file => file.name).join(", ");
+      fileNames.innerHTML = "Selected files: " + fileNamesList;
+
+      previewContainer.style.display = "block";
+    }
+
+    // Handle PDF upload and data extraction
+    document.getElementById("uploadForm").addEventListener("submit", async function(event) {
+      event.preventDefault();
+
+      if (selectedFiles.length === 0 || selectedFiles.some(file => file.type !== "application/pdf")) {
+        alert("Please upload valid PDF files.");
+        return;
+      }
+
+      const formData = new FormData();
+      selectedFiles.forEach(file => formData.append("files", file));
+
+      document.getElementById("loader").style.display = "block"; // Show loader
+      document.getElementById("dataContainer").innerHTML = ""; // Clear previous data
+
+      try {
+        const response = await fetch("http://0.0.0.0:8000/upload-pdf/", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          document.getElementById("loader").style.display = "none"; // Hide loader
+
+          if (result.extracted_details && result.extracted_details.length > 0) {
+            const data = result.extracted_details;
+
+            // Iterate over the data (each file's data)
+            data.forEach(fileData => {
+              for (const filename in fileData) {
+                const details = fileData[filename];
+
+                const card = document.createElement("div");
+                card.className = "data-card";
+
+                // Create a title for the card using the filename
+                card.innerHTML = `<h2>${filename}</h2>`;
+
+                // Loop through each key-value pair in the extracted details
+                for (const key in details) {
+                  const value = details[key];
+                  const detailElement = document.createElement("p");
+                  detailElement.innerHTML = `<strong>${key}:</strong> ${value || "N/A"}`;
+                  card.appendChild(detailElement);
+                }
+
+                document.getElementById("dataContainer").appendChild(card);
+              }
+            });
+          } else {
+            document.getElementById("dataContainer").innerHTML = "<p>No details found in the PDFs.</p>";
+          }
+        } else {
+          throw new Error("Failed to extract data from the PDFs.");
+        }
+      } catch (error) {
+        document.getElementById("loader").style.display = "none";
+        document.getElementById("dataContainer").innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+      }
+    });
+
+</script>
+
+</body>
+</html>
